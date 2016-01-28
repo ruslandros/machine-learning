@@ -1,0 +1,153 @@
+---
+title: "Coursera Machine Learning Prediction Assignment Writeup"
+author: "RD"
+date: "January 28, 2016"
+output: html_document
+---
+
+# Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+
+# Synopsis
+
+The goal of this project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+Firstly we will do data processing on the training dataset. Then we will attempt to build a model to classify the "classe" performed using a Decision Tree and using the Random Forest classifier, with 5 fold cross-validation.
+
+Based on the class lectures, we were told that using Random Forest will give us better prediction, and it is indeed true based on the model created here.
+
+Finally we ran through the prediction model to the testing dataset with the 20 different cases given.
+
+# Data Processing
+
+```{r, echo=FALSE, message=FALSE}
+
+# load the libraries
+
+library(pROC)
+library(caret)
+library(kernlab)
+library(ggplot2)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+
+#pml_training <- read.csv("pml-training.csv",na.strings=c("NA","","#DIV/0!"))
+#dim(pml_training)
+
+```
+
+## Read the training and testing given input files
+
+```{r}
+pml_training <- read.csv("pml-training.csv",na.strings=c("NA","","#DIV/0!"))
+pml_testing <- read.csv("pml-testing.csv",na.strings=c("NA","","#DIV/0!"))
+```
+
+Now we look at the training dataset.
+
+``` {r}
+dim(pml_training)
+sum(is.na(pml_training))
+```
+
+We have 160 predictors and there are a lot of NAs in the dataset. Let us try to remove some of them, if possible.
+
+```{r}
+#only keep columns with at least 50% non-blanks
+
+tidy_training <- pml_training[, colSums(is.na(pml_training)) < nrow(pml_training) * 0.5]
+dim(tidy_training)
+sum(is.na(tidy_training))
+```
+
+Now we are down to 60 predictors and no NAs, better. Let us see if we can do better. After further investigation we can remove the first 6 columns, consist of factors and timestamp value.
+
+```{r}
+#only keep columns with at least 50% non-blanks
+tidy_training[1:6] <- list(NULL)
+
+dim(tidy_training)
+```
+
+We are down to 54 variables, and we are good to go. We will do the same to our pml_testing dataset.
+
+```{r}
+tidy_testing <- pml_testing[, colSums(is.na(pml_testing)) < nrow(pml_testing) * 0.5]
+tidy_testing[1:6] <- list(NULL)
+dim(tidy_testing)
+```
+
+# Data Splitting
+
+So now we partition the pml_training dataset into training and validation, by the 60/40 rule.
+
+```{r}
+intrain <- createDataPartition(y=tidy_training$classe, p=0.6,list=FALSE)
+training <- tidy_training[intrain,]
+testing <- tidy_training[-intrain,]
+
+dim(training)
+dim(testing)
+
+```
+
+# Predicting with Decision Trees
+
+We first perform our prediction using the Decision Tree since it easier to intepret and faster performance.
+
+```{r}
+DTmodFit <- train(classe ~ ., method="rpart", data=training)
+DTpredict<-predict(DTmodFit, newdata=testing)
+DT_CM <- confusionMatrix(DTpredict, testing$classe)
+DT_CM
+DT_CM$overall[1]
+fancyRpartPlot(DTmodFit$finalModel)
+
+```
+
+# Predicting with Random Forest with 5 fold cross-validation
+
+We select this for better accuracy. We expect the out of sample error here will be smaller than the Decision Tree model. This going to take some time tho, so be patient...
+
+```{r, message=FALSE}
+require(randomForest)
+RFmodFit<-train(classe ~ ., method="rf",trControl=trainControl(method="cv",number=5), data=training)
+RFpredict<-predict(RFmodFit, newdata=testing)
+RF_CM <- confusionMatrix(RFpredict, testing$classe)
+RF_CM
+RF_CM$overall[1]
+
+```
+
+# The Results
+
+Since the Random Forest model gives us better accuracy/result (0.9973) or 99% and with smaller out-of-sample value (1-0.9973) or less than 1%, we will use this model to predict on the different 20 cases.
+
+# The last bit. Predicting on the pml_testing data.
+
+``` {r}
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:20){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+RFpredict2<-predict(RFmodFit, newdata=tidy_testing)
+#RFpredict2
+
+pml_write_files(RFpredict2)
+
+```
+
+# References
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har.
+
+```
+DONE. TQ
+```
